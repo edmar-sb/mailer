@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import * as SMTPTransport from 'nodemailer/lib/smtp-transport';
-import * as nodemailerMock from 'nodemailer-mock';
 
 import MailMessage from 'nodemailer/lib/mailer/mail-message';
 
@@ -70,9 +69,22 @@ function spyOnSmtpSend(onMail: (mail: MailMessage) => void) {
 async function getMailerServiceWithCustomTransport(
   options: MailerOptions,
 ): Promise<MailerService> {
+  const sentMail: any[] = [];
+  
+  const mockTransport = {
+    sendMail: jest.fn((mail: any) => {
+      sentMail.push(mail);
+      return Promise.resolve({ messageId: 'test-id', accepted: [mail.to], rejected: [], pending: [], response: 'ok' });
+    }),
+    verify: jest.fn(() => Promise.resolve(true)),
+    close: jest.fn(),
+    use: jest.fn(),
+    isIdle: jest.fn().mockReturnValue(true),
+  };
+
   class TestTransportFactory implements MailerTransportFactory {
     createTransport(options?: TransportType) {
-      return nodemailerMock.createTransport({ host: 'localhost', port: -100 });
+      return mockTransport as any;
     }
   }
   const module: TestingModule = await Test.createTestingModule({
@@ -93,6 +105,7 @@ async function getMailerServiceWithCustomTransport(
   await module.init();
 
   const service = module.get<MailerService>(MailerService);
+  (service as any).__sentMail = sentMail;
   return service;
 }
 
@@ -360,6 +373,6 @@ describe('MailerService', () => {
       html: 'This is test.',
     });
 
-    expect(nodemailerMock.mock.getSentMail().length).toEqual(1);
+    expect((service as any).__sentMail.length).toEqual(1);
   });
 });
